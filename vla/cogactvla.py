@@ -1533,7 +1533,6 @@ class CogACT(nn.Module):
                 seq_ids[-len(output.hidden_states):])
             self.cot_memory_bank.update_cot_embedding(
                 output_decoded, reasoning_feats)
-            # print('cot memory dict keys: ', self.cot_memory_bank.cot_dict.keys())
         if self.lang_inject != 'no':
             if self.use_cot_memory:
                 reasoning_feats = self.cot_memory_bank.get_cot_embedding()

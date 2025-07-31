@@ -466,29 +466,6 @@ class RLDSBatchTransform:
                 prompt_builder.add_turn(turn["from"], turn["value"])
             input_ids = self.base_tokenizer(prompt_builder.get_prompt(), add_special_tokens=True).input_ids
 
-        elif self.cot_version == "v6.5":
-            random_use_cot = random.random() < 0.8
-            use_full_cot = random_use_cot and (random.random() < 0.2)  # 新增：20%使用完整 CoT
-
-            if random_use_cot:
-                timestep = int(rlds_batch["observation"]["timestep"][0])
-                traj_length = int(rlds_batch["observation"]["traj_length"][0])
-                cot_dict = parse_cot(rlds_batch["cot"].decode())
-                if use_full_cot:
-                    cot_v6, _ = cot_dropout(rlds_batch["cot"].decode(), dropout_prob=0.2)
-                else:
-                    cot_v6 = select_cot_fields_by_keytimestep(cot_dict, timestep, traj_length)
-            else:
-                cot_v6 = ""
-
-            conversation = [
-                {"from": "human", "value": f"What action should the robot take to {lang}?"},
-                {"from": "gpt", "value": f"{cot_v6}"},
-            ]
-            for turn in conversation:
-                prompt_builder.add_turn(turn["from"], turn["value"])
-            input_ids = self.base_tokenizer(prompt_builder.get_prompt(), add_special_tokens=True).input_ids
-
         elif self.cot_version == "vqa":
             random_use_cot = random.random() < self.co_training_prob
             cot_dict = parse_cot(rlds_batch["cot"].decode())
