@@ -976,12 +976,9 @@ class CogACT(nn.Module):
 
         # extract the cognition feature
         cumulative_sum = attention_mask.cumsum(dim=1)
-        last_true_indices = (cumulative_sum == cumulative_sum.max(
-            dim=1, keepdim=True)[0]).float().argmax(dim=1)
-        expanded_indices = last_true_indices.unsqueeze(
-            -1).expand(-1, last_hidden.size(-1))
-        cognition_features = last_hidden.gather(
-            1, expanded_indices.unsqueeze(1))  # [B, 1, D]
+        last_true_indices = (cumulative_sum == cumulative_sum.max(dim=1, keepdim=True)[0]).float().argmax(dim=1)
+        expanded_indices = last_true_indices.unsqueeze(-1).expand(-1, last_hidden.size(-1))
+        cognition_features = last_hidden.gather(1, expanded_indices.unsqueeze(1))  # [B, 1, D]
 
         # reasoning inject
         if self.lang_inject:
@@ -990,8 +987,7 @@ class CogACT(nn.Module):
             reasoning_feats = masked_hidden[:, :max_len, :]
             reasoning_feats = reasoning_feats[:, 1:-1, :]
             if self.lang_inject == 'cognition':
-                reasoning_feats = self.reasoning_projector(
-                    cognition_features, reasoning_feats)
+                reasoning_feats = self.reasoning_projector(cognition_features, reasoning_feats)
             else:
                 reasoning_feats = self.reasoning_projector(reasoning_feats)
             cognition_features = self.reasoning_film(cognition_features, reasoning_feats)
@@ -1001,12 +997,9 @@ class CogACT(nn.Module):
             masked_hidden = last_hidden * attention_mask.unsqueeze(-1)
             reasoning_feats = masked_hidden[:, :max_len, :]
             reasoning_feats = reasoning_feats[:, 1:-1, :]  # [B,T,D]
-            moe_reasoning_feats, total_aux_loss, _, _ = self.moe_block(
-                reasoning_feats)  # [B,T,D]
-            reasoning_feats = self.reasoning_projector(
-                moe_reasoning_feats)  # [B,1,D]
-            cognition_features = self.reasoning_film(
-                cognition_features, reasoning_feats)  # [B,1,D]
+            moe_reasoning_feats, total_aux_loss, _, _ = self.moe_block(reasoning_feats)  # [B,T,D]
+            reasoning_feats = self.reasoning_projector(moe_reasoning_feats)  # [B,1,D]
+            cognition_features = self.reasoning_film(cognition_features, reasoning_feats)  # [B,1,D]
 
         actions_future = actions[:, -(self.future_action_window_size+1):, :]
 
@@ -1017,22 +1010,18 @@ class CogACT(nn.Module):
                 raw_img_feat = self.img_res_encoder(pixel_values['dino'])
             img_res_feat = self.perceiver_resampler(raw_img_feat)
 
-            cognition_features = torch.cat(
-                [cognition_features, img_res_feat], dim=1)
+            cognition_features = torch.cat([cognition_features, img_res_feat], dim=1)
 
         if self.load_proprio:
-            cognition_features = torch.cat(
-                [cognition_features, proprio_emb], dim=1)
+            cognition_features = torch.cat([cognition_features, proprio_emb], dim=1)
 
         if self.use_memory_bank:
             self.memory_bank.reset()
             cognition_features = self.memory_bank.process_batch(cognition_features)
 
-        # Repeat 'actions' 'repeated_diffusion_steps' times, resulting in [repeated_diffusion_steps*B, T, D]
         actions_repeated = actions_future.repeat(repeated_diffusion_steps, 1, 1)
         cognition_features_repeated = cognition_features.repeat(repeated_diffusion_steps, 1, 1)  # [repeated_diffusion_steps*B, 1, D]
 
-        # Action model forward and compute loss
         loss = self.action_model.loss(actions_repeated, cognition_features_repeated)
 
         if self.use_moe:
