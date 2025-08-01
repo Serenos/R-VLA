@@ -144,7 +144,6 @@ def select_cot_fields_by_keytimestep(cot_dict, timestep, traj_length):
             tags += [CotTag.MOVE.value]
         if subtask_keyframe == "1" or move_keyframe == "1":
             tags += [CotTag.GRIPPER_POSITION.value]
-        tags = [CotTag.SUBTASK.value, CotTag.MOVE.value, CotTag.GRIPPER_POSITION.value]
     return select_cot_dropout_fields(cot_dict, tags)
 
 

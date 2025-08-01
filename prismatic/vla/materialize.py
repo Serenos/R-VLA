@@ -31,12 +31,12 @@ def get_vla_dataset_and_collator(
     train: bool = True,
     episodic: bool = False,
     traj_group_size: int = 1,
-    use_optim_group_sample = False,
+    use_optim_group_sample: bool = False,
     load_depth: bool = False,
     load_proprio: bool = False,
     image_aug: bool = False,
     future_action_window_size: int = 0,
-    past_action_window_size: int = 1,         # Concatenated `past_action_window_size-1' actions and the current action for the input
+    past_action_window_size: int = 1,  # Concatenated `past_action_window_size-1' actions and the current action for the input
     load_all_data_for_training: bool = True,  # Load all data for training, or only a subset
     lang_action_out: bool = False,
     use_cot: bool = False,
@@ -55,9 +55,9 @@ def get_vla_dataset_and_collator(
         lang_action_out=lang_action_out,
         use_cot=use_cot,
         cot_version=cot_version,
-        cot_dropout_prob=0.0, #0.0,
+        cot_dropout_prob=0.0,
         print_prompt_limit=20,
-        co_training_prob=0.8, #0.7
+        co_training_prob=0.8,
     )
 
     # Build RLDS Iterable Dataset
@@ -65,7 +65,9 @@ def get_vla_dataset_and_collator(
         assert episodic is False, "Grouped dataset is not supported for episodic dataset"
 
         collator = GroupPaddedCollatorForActionPrediction(
-            tokenizer.model_max_length, tokenizer.pad_token_id, padding_side=padding_side,
+            tokenizer.model_max_length,
+            tokenizer.pad_token_id,
+            padding_side=padding_side,
             load_proprio=load_proprio,
         )
 
@@ -84,12 +86,14 @@ def get_vla_dataset_and_collator(
             use_optim_group_sample=use_optim_group_sample,
             load_depth=load_depth,
             load_proprio=load_proprio,
-            use_cot = use_cot,
+            use_cot=use_cot,
             cot_file_path=cot_file_path,
         )
     else:
         collator = PaddedCollatorForActionPrediction(
-            tokenizer.model_max_length, tokenizer.pad_token_id, padding_side=padding_side,
+            tokenizer.model_max_length,
+            tokenizer.pad_token_id,
+            padding_side=padding_side,
             load_proprio=load_proprio,
         )
 

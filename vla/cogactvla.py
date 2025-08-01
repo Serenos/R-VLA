@@ -994,8 +994,7 @@ class CogACT(nn.Module):
                     cognition_features, reasoning_feats)
             else:
                 reasoning_feats = self.reasoning_projector(reasoning_feats)
-            cognition_features = self.reasoning_film(
-                cognition_features, reasoning_feats)
+            cognition_features = self.reasoning_film(cognition_features, reasoning_feats)
 
         if self.use_moe:
             max_len = int(attention_mask.sum(dim=1).max().item())
@@ -1027,18 +1026,14 @@ class CogACT(nn.Module):
 
         if self.use_memory_bank:
             self.memory_bank.reset()
-            cognition_features = self.memory_bank.process_batch(
-                cognition_features)
+            cognition_features = self.memory_bank.process_batch(cognition_features)
 
         # Repeat 'actions' 'repeated_diffusion_steps' times, resulting in [repeated_diffusion_steps*B, T, D]
-        actions_repeated = actions_future.repeat(
-            repeated_diffusion_steps, 1, 1)
-        cognition_features_repeated = cognition_features.repeat(
-            repeated_diffusion_steps, 1, 1)  # [repeated_diffusion_steps*B, 1, D]
+        actions_repeated = actions_future.repeat(repeated_diffusion_steps, 1, 1)
+        cognition_features_repeated = cognition_features.repeat(repeated_diffusion_steps, 1, 1)  # [repeated_diffusion_steps*B, 1, D]
 
         # Action model forward and compute loss
-        loss = self.action_model.loss(
-            actions_repeated, cognition_features_repeated)
+        loss = self.action_model.loss(actions_repeated, cognition_features_repeated)
 
         if self.use_moe:
             loss += total_aux_loss
@@ -1537,18 +1532,22 @@ class CogACT(nn.Module):
             if self.use_cot_memory:
                 reasoning_feats = self.cot_memory_bank.get_cot_embedding()
                 if reasoning_feats is not None:
-                    reasoning_feats = self.reasoning_projector(reasoning_feats)
-                    cognition_features = self.reasoning_film(
-                        cognition_features, reasoning_feats)
+                    if self.lang_inject == 'cognition':
+                        reasoning_feats = self.reasoning_projector(cognition_features, reasoning_feats)
+                    else:
+                        reasoning_feats = self.reasoning_projector(reasoning_feats)
+                    cognition_features = self.reasoning_film(cognition_features, reasoning_feats)
             else:
                 reasoning_feats = []
                 for i in range(1, len(output.hidden_states)):
                     reasoning_feats.append(output.hidden_states[i][-1])
                 if reasoning_feats != []:
                     reasoning_feats = torch.cat(reasoning_feats, dim=1)  # [B, T, D]
-                    reasoning_feats = self.reasoning_projector(reasoning_feats)
-                    cognition_features = self.reasoning_film(
-                        cognition_features, reasoning_feats)
+                    if self.lang_inject == 'cognition':
+                        reasoning_feats = self.reasoning_projector(cognition_features, reasoning_feats)
+                    else:
+                        reasoning_feats = self.reasoning_projector(reasoning_feats)
+                    cognition_features = self.reasoning_film(cognition_features, reasoning_feats)
 
         if self.use_moe:
             reasoning_feats = []
