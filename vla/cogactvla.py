@@ -24,7 +24,7 @@ from prismatic.models.materialize import get_vision_backbone_and_transform
 from prismatic.models.vlms.prismatic import PrismaticVLM
 from prismatic.overwatch import initialize_overwatch
 from prismatic.util.nn_utils import FusedMLPProjector, LinearProjector, MLPProjector
-from prismatic.util.cot_utils import CotTag, get_cot_tags_list, get_cot_database_keys
+from prismatic.util.cot_utils import CotTag, get_cot_tags_list
 
 from action_model.action_model import ActionModel
 from action_model.models import DiT
@@ -565,9 +565,7 @@ class CognitionReasoningProjector(nn.Module):
     def __init__(self, in_dim, out_dim):
         super(CognitionReasoningProjector, self).__init__()
         # self.global_query = nn.Parameter(torch.zeros(1, 1, in_dim))
-        self.attn = nn.MultiheadAttention(embed_dim=in_dim,
-                                          num_heads=8,
-                                          batch_first=True)
+        self.attn = nn.MultiheadAttention(embed_dim=in_dim, num_heads=8, batch_first=True)
         self.mlps = nn.ModuleList([
             nn.Linear(in_dim, in_dim),
             nn.GELU(),
@@ -584,6 +582,77 @@ class CognitionReasoningProjector(nn.Module):
         for mlp in self.mlps:
             attn_out = mlp(attn_out)
         return attn_out
+
+
+class CoTReasoningBlock(nn.Module):
+    def __init__(self, dim, num_heads=4):
+        super().__init__()
+        self.attn = nn.MultiheadAttention(embed_dim=dim, num_heads=num_heads, batch_first=True)
+        self.norm1 = nn.LayerNorm(dim)
+        self.norm2 = nn.LayerNorm(dim)
+        self.ffn = nn.Sequential(
+            nn.Linear(dim, dim * 4),
+            nn.GELU(),
+            nn.Linear(dim * 4, dim),
+        )
+
+    def forward(self, hidden_states: torch.Tensor, input_injection: torch.Tensor, cos_sin=None):
+        x = hidden_states + input_injection
+        x = x + self.attn(self.norm1(x), self.norm1(x), self.norm1(x))[0]
+        x = x + self.ffn(self.norm2(x))
+        return x
+
+
+class HierarchicalCoTUpdater(nn.Module):
+    def __init__(self, dim, task_layers=2, percep_layers=2, action_layers=2, task_cycles=1, percep_cycles=2, action_cycles=2):
+        super().__init__()
+        self.task_cycles = task_cycles
+        self.percep_cycles = percep_cycles
+        self.action_cycles = action_cycles
+
+        self.task_layer = nn.ModuleList([CoTReasoningBlock(dim) for _ in range(task_layers)])
+        self.percep_layer = nn.ModuleList([CoTReasoningBlock(dim) for _ in range(percep_layers)])
+        self.action_layer = nn.ModuleList([CoTReasoningBlock(dim) for _ in range(action_layers)])
+
+    def forward(self, zH, zM, zL, cot_tokens):
+        with torch.no_grad():
+            for _ in range(self.task_cycles * self.percep_cycles * self.action_cycles - 1):
+                for block in self.action_layer:
+                    zL = block(zL, zM + cot_tokens)
+                if _ % self.action_cycles == 0:
+                    for block in self.percep_layer:
+                        zM = block(zM, zH + cot_tokens)
+                if _ % (self.percep_cycles * self.action_cycles) == 0:
+                    for block in self.task_layer:
+                        zH = block(zH, cot_tokens)
+
+        # 最后一步参与梯度传播
+        for block in self.action_layer:
+            zL = block(zL, zM + cot_tokens)
+        for block in self.percep_layer:
+            zM = block(zM, zH + cot_tokens)
+        for block in self.task_layer:
+            zH = block(zH, cot_tokens)
+
+        return zH, zM, zL
+
+
+class HiCoTWrapper(nn.Module):
+    def __init__(self, dim, task_cycles=1, percep_cycles=2, action_cycles=2):
+        super().__init__()
+        self.hicot = HierarchicalCoTUpdater(dim, task_cycles=task_cycles, percep_cycles=percep_cycles, action_cycles=action_cycles)
+        self.task_init = nn.Parameter(torch.zeros(1, 1, dim))
+        self.percep_init = nn.Parameter(torch.zeros(1, 1, dim))
+        self.action_init = nn.Parameter(torch.zeros(1, 1, dim))
+
+    def forward(self, cognition_features, cot_tokens):
+        B = cognition_features.size(0)
+        zH = self.task_init.expand(B, -1, -1).clone()
+        zM = self.percep_init.expand(B, -1, -1).clone()
+        zL = self.action_init.expand(B, -1, -1).clone()
+
+        zH, zM, zL = self.hicot(zH, zM, zL, cot_tokens)
+        return zH + zM + zL
 
 
 class CoTMemoryBank:
@@ -681,40 +750,6 @@ class CoTMemoryBank:
     def reset(self):
         self.cot_dict = {}
         self.update_counter = {tag: 0 for tag in self.tags}
-
-
-class CoTTriggerHead(nn.Module):
-    def __init__(self, input_dim: int, num_cot_types: int, hidden_dim: int = 512, dropout: float = 0.0):
-        """
-        Args:
-            input_dim: 输入维度 D（LLM encoder 输出的维度）
-            num_cot_types: 要预测的 CoT 类型数目（多标签分类）
-            hidden_dim: 可选隐藏层宽度
-            dropout: Dropout 比例
-        """
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.LayerNorm(input_dim),
-            nn.Linear(input_dim, hidden_dim),
-            nn.GELU(),
-            nn.Dropout(dropout),
-            nn.Linear(hidden_dim, num_cot_types),
-        )
-        self.sigmoid = nn.Sigmoid()
-
-    def forward(self, x):
-        """
-        Args:
-            x: Tensor of shape [B, 1, D] - 输入的平均上下文嵌入
-
-        Returns:
-            logits: [B, N] 多标签 raw logits
-            probs:  [B, N] 每个 CoT 类型的激活概率 (0~1)
-        """
-        x = x.squeeze(1)  # [B, D]
-        logits = self.net(x)  # [B, N]
-        probs = self.sigmoid(logits)
-        return logits, probs
 
 
 class CogACT(nn.Module):
@@ -848,17 +883,13 @@ class CogACT(nn.Module):
             elif self.lang_inject == 'cognition':
                 self.reasoning_projector = CognitionReasoningProjector(
                     token_size, token_size)
+            elif self.lang_inject == 'hicot':
+                self.reasoning_projector = HiCoTWrapper(token_size)
             else:
                 self.reasoning_projector = None
             print(
                 f'-----------using reasoning_projector {self.reasoning_projector} for reasoning of VLA model-------------')
             self.reasoning_film = FiLM(token_size, token_size)
-
-        self.use_cot_trigger = use_cot_trigger
-        if self.use_cot_trigger:
-            print('-----------using CoT trigger for reasoning of VLA model-------------')
-            self.cot_trigger_head = CoTTriggerHead(
-                input_dim=token_size, num_cot_types=len(get_cot_database_keys()))
 
         self.use_moe = use_moe
         if self.use_moe:
@@ -986,7 +1017,7 @@ class CogACT(nn.Module):
             masked_hidden = last_hidden * attention_mask.unsqueeze(-1)
             reasoning_feats = masked_hidden[:, :max_len, :]
             reasoning_feats = reasoning_feats[:, 1:-1, :]
-            if self.lang_inject == 'cognition':
+            if self.lang_inject == 'cognition' or self.lang_inject == 'hicot':
                 reasoning_feats = self.reasoning_projector(cognition_features, reasoning_feats)
             else:
                 reasoning_feats = self.reasoning_projector(reasoning_feats)
@@ -1521,7 +1552,7 @@ class CogACT(nn.Module):
             if self.use_cot_memory:
                 reasoning_feats = self.cot_memory_bank.get_cot_embedding()
                 if reasoning_feats is not None:
-                    if self.lang_inject == 'cognition':
+                    if self.lang_inject == 'cognition' or self.lang_inject == 'hicot':
                         reasoning_feats = self.reasoning_projector(cognition_features, reasoning_feats)
                     else:
                         reasoning_feats = self.reasoning_projector(reasoning_feats)
@@ -1532,7 +1563,7 @@ class CogACT(nn.Module):
                     reasoning_feats.append(output.hidden_states[i][-1])
                 if reasoning_feats != []:
                     reasoning_feats = torch.cat(reasoning_feats, dim=1)  # [B, T, D]
-                    if self.lang_inject == 'cognition':
+                    if self.lang_inject == 'cognition' or self.lang_inject == 'hicot':
                         reasoning_feats = self.reasoning_projector(cognition_features, reasoning_feats)
                     else:
                         reasoning_feats = self.reasoning_projector(reasoning_feats)

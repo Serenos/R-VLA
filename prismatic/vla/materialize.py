@@ -56,8 +56,8 @@ def get_vla_dataset_and_collator(
         use_cot=use_cot,
         cot_version=cot_version,
         cot_dropout_prob=0.0,
-        print_prompt_limit=20,
-        co_training_prob=0.8,
+        print_prompt_limit=10,
+        co_training_prob=0.7,
     )
 
     # Build RLDS Iterable Dataset

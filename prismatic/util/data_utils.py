@@ -151,8 +151,7 @@ class PaddedCollatorForActionPrediction:
         if self.load_proprio:
             for i, instance in enumerate(instances):
                 if instance['proprio'].shape[-1] == 7:
-                    instances[i]['proprio'] = torch.cat([instance['proprio'],
-                                                     torch.zeros_like(instance['proprio'][:, :, -1:])], dim=-1)
+                    instances[i]['proprio'] = torch.cat([instance['proprio'], torch.zeros_like(instance['proprio'][:, :, -1:])], dim=-1)
 
             proprio = [instance["proprio"] for instance in instances]
             proprio = torch.stack(proprio)
