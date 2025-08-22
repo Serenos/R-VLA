@@ -128,6 +128,7 @@ class TrainConfig:
     use_cot_trigger: bool = False
     use_moe: bool = False
     vlm_loss_weight: float = 0.0
+    co_training_prob: float = 0.8
 
     def __post_init__(self) -> None:
         """Lift optimization parameters from `self.vla` for ease of use =>> validate on `expected_world_size`"""
@@ -279,6 +280,7 @@ def train(cfg: TrainConfig) -> None:
         use_cot=cfg.use_cot,
         cot_version=cfg.cot_version,
         cot_file_path=cfg.cot_file_path,
+        co_training_prob=cfg.co_training_prob if cfg.use_cot else 0.0,
     )
 
     # Save dataset statistics for de-normalization at inference time

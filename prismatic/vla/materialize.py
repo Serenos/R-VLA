@@ -42,10 +42,12 @@ def get_vla_dataset_and_collator(
     use_cot: bool = False,
     cot_version: str = None,
     cot_file_path: str = None,
+    co_training_prob: float = 0.8,
 ) -> Tuple[Dataset, ActionTokenizer, Union[PaddedCollatorForActionPrediction, GroupPaddedCollatorForActionPrediction]]:
     """Initialize RLDS Dataset (wraps TFDS), ActionTokenizer, and initialize transform/collation functions."""
 
     action_tokenizer = ActionTokenizer(tokenizer)
+    print(f'co_training_prob: {co_training_prob}')
     batch_transform = RLDSBatchTransform(
         action_tokenizer,
         tokenizer,
@@ -57,7 +59,7 @@ def get_vla_dataset_and_collator(
         cot_version=cot_version,
         cot_dropout_prob=0.0,
         print_prompt_limit=10,
-        co_training_prob=0.7,
+        co_training_prob=co_training_prob,
     )
 
     # Build RLDS Iterable Dataset

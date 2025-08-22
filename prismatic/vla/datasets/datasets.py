@@ -144,6 +144,7 @@ def select_cot_fields_by_keytimestep(cot_dict, timestep, traj_length):
             tags += [CotTag.MOVE.value]
         if subtask_keyframe == "1" or move_keyframe == "1":
             tags += [CotTag.GRIPPER_POSITION.value]
+        tags = [CotTag.SUBTASK.value, CotTag.MOVE.value, CotTag.GRIPPER_POSITION.value]
     return select_cot_dropout_fields(cot_dict, tags)
 
 
@@ -220,12 +221,12 @@ class RLDSBatchTransform:
     image_transform: ImageTransform
     prompt_builder_fn: Type[PromptBuilder]
     predict_stop_token: bool = True
-    lang_action_out: bool = (False,)
-    use_cot: bool = (False,)
-    cot_version: str = ("v1",)
+    lang_action_out: bool = False
+    use_cot: bool = False
+    cot_version: str = "v1"
     cot_dropout_prob: float = 0.0
-    print_prompt_limit: int = (10,)
-    co_training_prob: float = (0.7,)
+    print_prompt_limit: int = 10
+    co_training_prob: float = 0.8
 
     def __call__(self, rlds_batch: Dict[str, Any]) -> Dict[str, Any]:
         """Converts a RLDS batch to the format expected by the OpenVLA collator/models."""
