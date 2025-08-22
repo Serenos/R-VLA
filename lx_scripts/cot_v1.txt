@@ -1,0 +1,9 @@
+"<s> In: What action should the robot take to {task}?\nOut: {cot}</s>"
+
+['<s> In: What action should the robot take to stack the green block on the yellow block?\nOut: 
+TASK: The task is to move the green block to the yellow block. PLAN: 1. Move the arm to the green block. 
+2. Pick up the green block. 3. Move the arm to the yellow block. 4. Place the green block on the yellow block. 
+VISIBLE OBJECTS: a green block [93, 82, 110, 111], a green block [92, 79, 115, 113], a wooden table [19, 42, 241, 248], 
+a yellow block [139, 103, 164, 136], a robot [78, 1, 133, 112] SUBTASK REASONING: The arm is moving toward the yellow block. 
+SUBTASK: Move the arm to the yellow block. MOVE REASONING: The arm should move to the right to reach the yellow block. 
+MOVE: move right GRIPPER POSITION: [95, 91, 95, 91, 99, 91, 111, 92, 122, 93]</s>']

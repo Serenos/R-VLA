@@ -3,12 +3,12 @@ export PYTHONPATH=/home/lixiang10/workspace/R-VLA:$PYTHONPATH
 export CUDA_VISIBLE_DEVICES="0"
 policy_model=cogact
 
-ckpt_path="/home/lixiang10/workspace/R-VLA/CogACT/cot_chekpoint/bridge_ditb_cot_v6.2-cot_vlm_loss0.1_inject-hicotv2-group32_from-pretrained--image_aug/checkpoints/step-010000-epoch-00-loss=0.1173.pt"
+ckpt_path="/home/lixiang10/workspace/R-VLA/CogACT/cot_chekpoint/bridge_ditb_cot_v6.2-cot_vlm_loss0.1_inject-hicotv2-group32_from-pretrained--image_aug/checkpoints/step-020000-epoch-00-loss=0.0878.pt"
 
 lang_inject=hicot_v2
-cot_frozen_step=6
+cot_frozen_step=18
 cot_memory_expire=6
-cot_generate_sample=6
+cot_generate_sample=-1
 cot_allow_prefix=-1
 action_model_type=DiT-B
 eval_note="eval_cot_v62_fromDiTL_coarse2fine_20k_frozen${cot_frozen_step}_cotmemoryv2_expire${cot_memory_expire}_dosample${cot_generate_sample}_inject${lang_inject}_control"
