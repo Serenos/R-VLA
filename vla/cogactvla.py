@@ -1144,7 +1144,6 @@ class CogACT(nn.Module):
             reasoning_feats = masked_hidden[:, :max_len, :]
             reasoning_feats = reasoning_feats[:, 1:-1, :]
             reasoning_feats = self.reasoning_projector(reasoning_feats)
-            reasoning_feats = self.reasoning_projector(reasoning_feats)
             cognition_features = self.reasoning_film(cognition_features, reasoning_feats)
 
         if self.use_moe:
@@ -1566,7 +1565,6 @@ class CogACT(nn.Module):
         self.time_frozen -= 1
 
         lang_action_len = self.get_action_dim(unnorm_key) * (self.future_action_window_size + 1)
-        lang_action_len = self.get_action_dim(unnorm_key) * (self.future_action_window_size + 1)
         input_ids = tokenizer(prompt_text, truncation=True, return_tensors="pt").input_ids.to(self.vlm.device)
         if cot_version == 'v1' or cot_version == 'v2':
             input_ids = torch.cat(
@@ -1579,8 +1577,6 @@ class CogACT(nn.Module):
             input_ids = torch.cat(
                 (input_ids, torch.unsqueeze(torch.Tensor([29871, 2]).long(), dim=0).to(self.vlm.device)), dim=1
             )
-            input_ids = torch.cat((input_ids, tokenizer(cot_prompt, return_tensors="pt").input_ids.to(self.vlm.device)[:, 1:],), dim=1)
-            input_ids = torch.cat((input_ids, tokenizer(self.frozen_prompt, return_tensors="pt").input_ids.to(self.vlm.device)[:, 1:],), dim=1)
             input_ids = torch.cat((input_ids, tokenizer(cot_prompt, return_tensors="pt").input_ids.to(self.vlm.device)[:, 1:],), dim=1)
             input_ids = torch.cat((input_ids, tokenizer(self.frozen_prompt, return_tensors="pt").input_ids.to(self.vlm.device)[:, 1:],), dim=1)
 
@@ -1656,7 +1652,6 @@ class CogACT(nn.Module):
         # cognition_features = output.hidden_states[-1][-1][:, -1, :]
         assert (cognition_features.shape[0], cognition_features.shape[1]) == (1, 4096), "Batch size must be 1 for action prediction"
         cognition_features = cognition_features.unsqueeze(1).to(model_dtype)  # [B, 1, D]
-        cognition_features = cognition_features.unsqueeze(1).to(model_dtype)  # [B, 1, D]
 
         if self.use_cot_memory:
             if reset_memory:
@@ -1670,15 +1665,14 @@ class CogACT(nn.Module):
                 reasoning_feats.append(output.hidden_states[i][-1])
             if reasoning_feats != []:
                 reasoning_feats = torch.cat(reasoning_feats, dim=1)  # [B, T, D]
-                output_decoded = tokenizer.decode(seq_ids[-len(output.hidden_states):])
-                # self.cot_memory_bank.update_cot_embedding(output_decoded, reasoning_feats)
-                self.cot_memory_bank.update_cot_embedding2(output_decoded, reasoning_feats, tokenizer)
+            output_decoded = tokenizer.decode(seq_ids[-len(output.hidden_states):])
+            # self.cot_memory_bank.update_cot_embedding(output_decoded, reasoning_feats)
+            self.cot_memory_bank.update_cot_embedding2(output_decoded, reasoning_feats, tokenizer)
 
         if self.lang_inject != 'no':
             if self.use_cot_memory:
                 reasoning_feats = self.cot_memory_bank.get_cot_embedding()
                 if reasoning_feats is not None:
-                    reasoning_feats = self.reasoning_projector(reasoning_feats)
                     reasoning_feats = self.reasoning_projector(reasoning_feats)
                     cognition_features = self.reasoning_film(cognition_features, reasoning_feats)
             else:
@@ -1687,7 +1681,6 @@ class CogACT(nn.Module):
                     reasoning_feats.append(output.hidden_states[i][-1])
                 if reasoning_feats != []:
                     reasoning_feats = torch.cat(reasoning_feats, dim=1)  # [B, T, D]
-                    reasoning_feats = self.reasoning_projector(reasoning_feats)
                     reasoning_feats = self.reasoning_projector(reasoning_feats)
                     cognition_features = self.reasoning_film(cognition_features, reasoning_feats)
 
@@ -1714,7 +1707,6 @@ class CogACT(nn.Module):
 
         # Sample random noise
         B = cognition_features.shape[0]
-        noise = torch.randn(B, self.future_action_window_size+1, self.action_model.in_channels, device=cognition_features.device).to(model_dtype)  # [B, T, D]
         noise = torch.randn(B, self.future_action_window_size+1, self.action_model.in_channels, device=cognition_features.device).to(model_dtype)  # [B, T, D]
 
         # Setup classifier-free guidance:
@@ -1764,10 +1756,7 @@ class CogACT(nn.Module):
         action_norm_stats = self.get_action_stats(unnorm_key)
         mask = action_norm_stats.get("mask", np.ones_like(action_norm_stats["q01"], dtype=bool))
         action_high, action_low = np.array(action_norm_stats["q99"]), np.array(action_norm_stats["q01"])
-        mask = action_norm_stats.get("mask", np.ones_like(action_norm_stats["q01"], dtype=bool))
-        action_high, action_low = np.array(action_norm_stats["q99"]), np.array(action_norm_stats["q01"])
         normalized_actions = np.clip(normalized_actions, -1, 1)
-        normalized_actions[:, 6] = np.where(normalized_actions[:, 6] < 0.5, 0, 1)
         normalized_actions[:, 6] = np.where(normalized_actions[:, 6] < 0.5, 0, 1)
         actions = np.where(
             mask,
@@ -1776,7 +1765,6 @@ class CogACT(nn.Module):
             normalized_actions,
         )
 
-        decoded_tokens = tokenizer.decode(output.sequences[0], skip_special_tokens=False)
         decoded_tokens = tokenizer.decode(output.sequences[0], skip_special_tokens=False)
         if "\nOut: " in decoded_tokens:
             prompt_out = decoded_tokens.split("\nOut: ")[-1]

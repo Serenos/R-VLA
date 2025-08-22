@@ -224,12 +224,7 @@ class RLDSBatchTransform:
     lang_action_out: bool = False
     use_cot: bool = False
     cot_version: str = "v1"
-    lang_action_out: bool = False
-    use_cot: bool = False
-    cot_version: str = "v1"
     cot_dropout_prob: float = 0.0
-    print_prompt_limit: int = 10
-    co_training_prob: float = 0.8
     print_prompt_limit: int = 10
     co_training_prob: float = 0.8
 
