@@ -592,9 +592,7 @@ class CoTReasoningBlock(nn.Module):
         self.norm2 = nn.LayerNorm(dim)
         self.ffn = nn.Sequential(
             nn.Linear(dim, dim),
-            nn.Linear(dim, dim),
             nn.GELU(),
-            nn.Linear(dim, dim),
             nn.Linear(dim, dim),
         )
 
@@ -607,7 +605,6 @@ class CoTReasoningBlock(nn.Module):
 
 class HierarchicalCoTUpdater(nn.Module):
     def __init__(self, dim, task_layers=1, action_layers=1, task_cycles=2, action_cycles=2):
-    def __init__(self, dim, task_layers=1, action_layers=1, task_cycles=2, action_cycles=2):
         super().__init__()
         self.task_cycles = task_cycles
         self.action_cycles = action_cycles
@@ -615,7 +612,6 @@ class HierarchicalCoTUpdater(nn.Module):
         self.task_layer = nn.ModuleList([CoTReasoningBlock(dim) for _ in range(task_layers)])
         self.action_layer = nn.ModuleList([CoTReasoningBlock(dim) for _ in range(action_layers)])
 
-    def forward(self, zH, zL, reaoning_features):
     def forward(self, zH, zL, reaoning_features):
         with torch.no_grad():
             for _H_step in range(self.task_cycles):
@@ -625,56 +621,24 @@ class HierarchicalCoTUpdater(nn.Module):
                             zL = block(zL, zH + reaoning_features)
 
                 if not (_H_step == self.task_cycles - 1):
-            for _H_step in range(self.task_cycles):
-                for _L_step in range(self.action_cycles):
-                    if not ((_H_step == self.task_cycles - 1) and (_L_step == self.action_cycles - 1)):
-                        for block in self.action_layer:
-                            zL = block(zL, zH + reaoning_features)
-
-                if not (_H_step == self.task_cycles - 1):
                     for block in self.task_layer:
                         zH = block(zH, zL)
-        # assert not zH.requires_grad and not zL.requires_grad
-                        zH = block(zH, zL)
-        # assert not zH.requires_grad and not zL.requires_grad
 
         # 最后一步参与梯度传播
         for block in self.action_layer:
             zL = block(zL, zH + reaoning_features)
-            zL = block(zL, zH + reaoning_features)
         for block in self.task_layer:
             zH = block(zH, zL)
-            zH = block(zH, zL)
 
-        return zH, zL
         return zH, zL
 
 
 class HiCoTWrapper(nn.Module):
     def __init__(self, dim, task_cycles=1, action_cycles=2):
-    def __init__(self, dim, task_cycles=1, action_cycles=2):
         super().__init__()
-        self.hicot = HierarchicalCoTUpdater(dim, task_cycles=task_cycles, action_cycles=action_cycles)
         self.hicot = HierarchicalCoTUpdater(dim, task_cycles=task_cycles, action_cycles=action_cycles)
         self.task_init = nn.Parameter(torch.zeros(1, 1, dim))
         self.action_init = nn.Parameter(torch.zeros(1, 1, dim))
-        self.global_query = nn.Parameter(torch.zeros(1, 1, dim))
-
-        self.attn = nn.MultiheadAttention(embed_dim=dim, num_heads=4, batch_first=True)
-        self.mlps = nn.ModuleList([
-            nn.Linear(dim, dim),
-            nn.GELU(),
-            nn.Linear(dim, dim),
-        ]
-        )
-
-    def forward(self, x):
-        B, N, C = x.shape
-        q = self.global_query.expand(B, -1, -1)
-        attn_out, _ = self.attn(q, x, x, need_weights=False)
-        for mlp in self.mlps:
-            attn_out = mlp(attn_out)
-
         self.global_query = nn.Parameter(torch.zeros(1, 1, dim))
 
         self.attn = nn.MultiheadAttention(embed_dim=dim, num_heads=4, batch_first=True)
@@ -1706,13 +1670,10 @@ class CogACT(nn.Module):
                 reasoning_feats.append(output.hidden_states[i][-1])
             if reasoning_feats != []:
                 reasoning_feats = torch.cat(reasoning_feats, dim=1)  # [B, T, D]
-            output_decoded = tokenizer.decode(seq_ids[-len(output.hidden_states):])
-            # self.cot_memory_bank.update_cot_embedding(output_decoded, reasoning_feats)
-            self.cot_memory_bank.update_cot_embedding2(output_decoded, reasoning_feats, tokenizer)
-                reasoning_feats = torch.cat(reasoning_feats, dim=1)  # [B, T, D]
-            output_decoded = tokenizer.decode(seq_ids[-len(output.hidden_states):])
-            # self.cot_memory_bank.update_cot_embedding(output_decoded, reasoning_feats)
-            self.cot_memory_bank.update_cot_embedding2(output_decoded, reasoning_feats, tokenizer)
+                output_decoded = tokenizer.decode(seq_ids[-len(output.hidden_states):])
+                # self.cot_memory_bank.update_cot_embedding(output_decoded, reasoning_feats)
+                self.cot_memory_bank.update_cot_embedding2(output_decoded, reasoning_feats, tokenizer)
+
         if self.lang_inject != 'no':
             if self.use_cot_memory:
                 reasoning_feats = self.cot_memory_bank.get_cot_embedding()
