@@ -592,7 +592,9 @@ class CoTReasoningBlock(nn.Module):
         self.norm2 = nn.LayerNorm(dim)
         self.ffn = nn.Sequential(
             nn.Linear(dim, dim),
+            nn.Linear(dim, dim),
             nn.GELU(),
+            nn.Linear(dim, dim),
             nn.Linear(dim, dim),
         )
 
@@ -605,6 +607,7 @@ class CoTReasoningBlock(nn.Module):
 
 class HierarchicalCoTUpdater(nn.Module):
     def __init__(self, dim, task_layers=1, action_layers=1, task_cycles=2, action_cycles=2):
+    def __init__(self, dim, task_layers=1, action_layers=1, task_cycles=2, action_cycles=2):
         super().__init__()
         self.task_cycles = task_cycles
         self.action_cycles = action_cycles
@@ -613,7 +616,15 @@ class HierarchicalCoTUpdater(nn.Module):
         self.action_layer = nn.ModuleList([CoTReasoningBlock(dim) for _ in range(action_layers)])
 
     def forward(self, zH, zL, reaoning_features):
+    def forward(self, zH, zL, reaoning_features):
         with torch.no_grad():
+            for _H_step in range(self.task_cycles):
+                for _L_step in range(self.action_cycles):
+                    if not ((_H_step == self.task_cycles - 1) and (_L_step == self.action_cycles - 1)):
+                        for block in self.action_layer:
+                            zL = block(zL, zH + reaoning_features)
+
+                if not (_H_step == self.task_cycles - 1):
             for _H_step in range(self.task_cycles):
                 for _L_step in range(self.action_cycles):
                     if not ((_H_step == self.task_cycles - 1) and (_L_step == self.action_cycles - 1)):
@@ -624,22 +635,46 @@ class HierarchicalCoTUpdater(nn.Module):
                     for block in self.task_layer:
                         zH = block(zH, zL)
         # assert not zH.requires_grad and not zL.requires_grad
+                        zH = block(zH, zL)
+        # assert not zH.requires_grad and not zL.requires_grad
 
         # 最后一步参与梯度传播
         for block in self.action_layer:
             zL = block(zL, zH + reaoning_features)
+            zL = block(zL, zH + reaoning_features)
         for block in self.task_layer:
             zH = block(zH, zL)
+            zH = block(zH, zL)
 
+        return zH, zL
         return zH, zL
 
 
 class HiCoTWrapper(nn.Module):
     def __init__(self, dim, task_cycles=1, action_cycles=2):
+    def __init__(self, dim, task_cycles=1, action_cycles=2):
         super().__init__()
+        self.hicot = HierarchicalCoTUpdater(dim, task_cycles=task_cycles, action_cycles=action_cycles)
         self.hicot = HierarchicalCoTUpdater(dim, task_cycles=task_cycles, action_cycles=action_cycles)
         self.task_init = nn.Parameter(torch.zeros(1, 1, dim))
         self.action_init = nn.Parameter(torch.zeros(1, 1, dim))
+        self.global_query = nn.Parameter(torch.zeros(1, 1, dim))
+
+        self.attn = nn.MultiheadAttention(embed_dim=dim, num_heads=4, batch_first=True)
+        self.mlps = nn.ModuleList([
+            nn.Linear(dim, dim),
+            nn.GELU(),
+            nn.Linear(dim, dim),
+        ]
+        )
+
+    def forward(self, x):
+        B, N, C = x.shape
+        q = self.global_query.expand(B, -1, -1)
+        attn_out, _ = self.attn(q, x, x, need_weights=False)
+        for mlp in self.mlps:
+            attn_out = mlp(attn_out)
+
         self.global_query = nn.Parameter(torch.zeros(1, 1, dim))
 
         self.attn = nn.MultiheadAttention(embed_dim=dim, num_heads=4, batch_first=True)
@@ -774,6 +809,7 @@ class CoTMemoryBank:
                 # reasoning_feats 的顺序应与tag出现顺序一致
             content_len = next_idx - (idx)
             self.cot_dict[tag] = reasoning_feats[:, idx:idx+content_len, :]  # [B, 1, D]
+            self.cot_dict[tag] = reasoning_feats[:, idx:idx+content_len, :]  # [B, 1, D]
             self.update_counter[tag] = 0  # 本次更新，计数归零
             updated_tags.add(tag)
 
@@ -842,6 +878,7 @@ class CoTMemoryBank:
         if not self.cot_dict:
             return None
         # 按tag顺序拼接
+        emb_list = [self.cot_dict[tag] for tag in self.tags if tag in self.cot_dict]
         emb_list = [self.cot_dict[tag] for tag in self.tags if tag in self.cot_dict]
         if emb_list:
             return torch.cat(emb_list, dim=1)  # [B, N, D]
@@ -1142,6 +1179,7 @@ class CogACT(nn.Module):
             masked_hidden = last_hidden * attention_mask.unsqueeze(-1)
             reasoning_feats = masked_hidden[:, :max_len, :]
             reasoning_feats = reasoning_feats[:, 1:-1, :]
+            reasoning_feats = self.reasoning_projector(reasoning_feats)
             reasoning_feats = self.reasoning_projector(reasoning_feats)
             cognition_features = self.reasoning_film(cognition_features, reasoning_feats)
 
@@ -1564,6 +1602,7 @@ class CogACT(nn.Module):
         self.time_frozen -= 1
 
         lang_action_len = self.get_action_dim(unnorm_key) * (self.future_action_window_size + 1)
+        lang_action_len = self.get_action_dim(unnorm_key) * (self.future_action_window_size + 1)
         input_ids = tokenizer(prompt_text, truncation=True, return_tensors="pt").input_ids.to(self.vlm.device)
         if cot_version == 'v1' or cot_version == 'v2':
             input_ids = torch.cat(
@@ -1576,6 +1615,8 @@ class CogACT(nn.Module):
             input_ids = torch.cat(
                 (input_ids, torch.unsqueeze(torch.Tensor([29871, 2]).long(), dim=0).to(self.vlm.device)), dim=1
             )
+            input_ids = torch.cat((input_ids, tokenizer(cot_prompt, return_tensors="pt").input_ids.to(self.vlm.device)[:, 1:],), dim=1)
+            input_ids = torch.cat((input_ids, tokenizer(self.frozen_prompt, return_tensors="pt").input_ids.to(self.vlm.device)[:, 1:],), dim=1)
             input_ids = torch.cat((input_ids, tokenizer(cot_prompt, return_tensors="pt").input_ids.to(self.vlm.device)[:, 1:],), dim=1)
             input_ids = torch.cat((input_ids, tokenizer(self.frozen_prompt, return_tensors="pt").input_ids.to(self.vlm.device)[:, 1:],), dim=1)
 
@@ -1651,6 +1692,7 @@ class CogACT(nn.Module):
         # cognition_features = output.hidden_states[-1][-1][:, -1, :]
         assert (cognition_features.shape[0], cognition_features.shape[1]) == (1, 4096), "Batch size must be 1 for action prediction"
         cognition_features = cognition_features.unsqueeze(1).to(model_dtype)  # [B, 1, D]
+        cognition_features = cognition_features.unsqueeze(1).to(model_dtype)  # [B, 1, D]
 
         if self.use_cot_memory:
             if reset_memory:
@@ -1667,10 +1709,15 @@ class CogACT(nn.Module):
             output_decoded = tokenizer.decode(seq_ids[-len(output.hidden_states):])
             # self.cot_memory_bank.update_cot_embedding(output_decoded, reasoning_feats)
             self.cot_memory_bank.update_cot_embedding2(output_decoded, reasoning_feats, tokenizer)
+                reasoning_feats = torch.cat(reasoning_feats, dim=1)  # [B, T, D]
+            output_decoded = tokenizer.decode(seq_ids[-len(output.hidden_states):])
+            # self.cot_memory_bank.update_cot_embedding(output_decoded, reasoning_feats)
+            self.cot_memory_bank.update_cot_embedding2(output_decoded, reasoning_feats, tokenizer)
         if self.lang_inject != 'no':
             if self.use_cot_memory:
                 reasoning_feats = self.cot_memory_bank.get_cot_embedding()
                 if reasoning_feats is not None:
+                    reasoning_feats = self.reasoning_projector(reasoning_feats)
                     reasoning_feats = self.reasoning_projector(reasoning_feats)
                     cognition_features = self.reasoning_film(cognition_features, reasoning_feats)
             else:
@@ -1679,6 +1726,7 @@ class CogACT(nn.Module):
                     reasoning_feats.append(output.hidden_states[i][-1])
                 if reasoning_feats != []:
                     reasoning_feats = torch.cat(reasoning_feats, dim=1)  # [B, T, D]
+                    reasoning_feats = self.reasoning_projector(reasoning_feats)
                     reasoning_feats = self.reasoning_projector(reasoning_feats)
                     cognition_features = self.reasoning_film(cognition_features, reasoning_feats)
 
@@ -1705,6 +1753,7 @@ class CogACT(nn.Module):
 
         # Sample random noise
         B = cognition_features.shape[0]
+        noise = torch.randn(B, self.future_action_window_size+1, self.action_model.in_channels, device=cognition_features.device).to(model_dtype)  # [B, T, D]
         noise = torch.randn(B, self.future_action_window_size+1, self.action_model.in_channels, device=cognition_features.device).to(model_dtype)  # [B, T, D]
 
         # Setup classifier-free guidance:
@@ -1754,7 +1803,10 @@ class CogACT(nn.Module):
         action_norm_stats = self.get_action_stats(unnorm_key)
         mask = action_norm_stats.get("mask", np.ones_like(action_norm_stats["q01"], dtype=bool))
         action_high, action_low = np.array(action_norm_stats["q99"]), np.array(action_norm_stats["q01"])
+        mask = action_norm_stats.get("mask", np.ones_like(action_norm_stats["q01"], dtype=bool))
+        action_high, action_low = np.array(action_norm_stats["q99"]), np.array(action_norm_stats["q01"])
         normalized_actions = np.clip(normalized_actions, -1, 1)
+        normalized_actions[:, 6] = np.where(normalized_actions[:, 6] < 0.5, 0, 1)
         normalized_actions[:, 6] = np.where(normalized_actions[:, 6] < 0.5, 0, 1)
         actions = np.where(
             mask,
@@ -1763,6 +1815,7 @@ class CogACT(nn.Module):
             normalized_actions,
         )
 
+        decoded_tokens = tokenizer.decode(output.sequences[0], skip_special_tokens=False)
         decoded_tokens = tokenizer.decode(output.sequences[0], skip_special_tokens=False)
         if "\nOut: " in decoded_tokens:
             prompt_out = decoded_tokens.split("\nOut: ")[-1]
