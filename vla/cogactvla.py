@@ -978,8 +978,7 @@ class CogACT(nn.Module):
                     vision_backbone_id='dinov2-vit-l',
                     image_resize_strategy=image_resize_strategy,
                 )
-                kv_dim = self.vlm.vision_backbone.dino_featurizer.patch_embed.proj.weight.shape[
-                    0]
+                kv_dim = self.vlm.vision_backbone.dino_featurizer.patch_embed.proj.weight.shape[0]
 
             self.perceiver_resampler = PerceiverResampler(q_dim=token_size, kv_dim=kv_dim, num_latents=1, depth=2, heads=8, dropout=0.0, ff_mult=4)
 
@@ -1043,14 +1042,12 @@ class CogACT(nn.Module):
         self.base_prompt = ''  # f"{CotTag.TASK.value}"  # 初始化时可根据实际情况赋值
         self.frozen_prompt = None
         self.max_freezing_time = cot_frozen_step  # 可根据需要调整
-        print('------------max_freezing_time: ', self.max_freezing_time, '-----------------')
         self.time_frozen = 0
 
         self.use_cot_memory = use_cot_memory
         self.cot_memory_expire = cot_memory_expire
         if self.use_cot_memory:
-            print(
-                f'-----------self.use_cot_memory: {self.use_cot_memory}, self.cot_memory_expire: {self.cot_memory_expire}-------------')
+            print(f'-----------self.use_cot_memory: {self.use_cot_memory}, self.cot_memory_expire: {self.cot_memory_expire}-------------')
             self.use_cot_memory_attn = use_cot_memory_attn
             self.cot_memory_bank = CoTMemoryBank(
                 expire_threshold=self.cot_memory_expire, using_attention=use_cot_memory_attn, num_layers=2, feature_dim=token_size)

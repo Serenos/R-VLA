@@ -2,9 +2,9 @@
 # eval $(curl -s http://deploy.i.brainpp.cn/httpproxy)
 # eval "$(conda shell.bash hook)"
 # source activate cogact
-export PYTHONPATH=/home/lixiang10/workspace/CogACT:$PYTHONPATH
+export PYTHONPATH=/root/lixiang/R-VLA:$PYTHONPATH
 
-pretrained_ckpt='/data/lixiang10/CogACT/CogACT-Base/checkpoints/CogACT-Base.pt'
+pretrained_ckpt='/OXE/models/CogACT-Base//checkpoints/CogACT-Base.pt'
 # pretrained_ckpt='/data/lixiang10/CogACT/runs/debug--image_aug/checkpoints/step-025000-epoch-02-loss\=0.0264.pt'
 # action_model_type='DiT-L'
 action_model_type='DiT-B'
